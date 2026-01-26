@@ -15,8 +15,12 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 // CORS allows your Frontend (localhost:5173) to talk to this Backend
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175"
+  ],
+  credentials: true
 }));
 app.use(express.json()); // Allows server to accept JSON data
 
@@ -28,7 +32,7 @@ app.use("/api/auth", authRoutes);
 
 // Health Check (to see if server is alive)
 app.get("/", (req, res) => {
-    res.send("Server is ready");
+    res.send("SERVER IS UPDATED!!!!"); // Change the text
 });
 
 app.listen(PORT, () => {
