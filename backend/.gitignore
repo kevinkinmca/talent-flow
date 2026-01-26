@@ -1,0 +1,10 @@
+# Ignore Dependencies
+node_modules/
+
+# Ignore Secrets (VERY IMPORTANT)
+.env
+.DS_Store
+
+# Ignore Build Outputs
+dist/
+build/
