@@ -4,7 +4,7 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import AdminDashboard from "./pages/AdminDashboard";
-import InterviewPage from "./pages/InterviewPage"; // <--- 1. Import InterviewPage
+import InterviewPage from "./pages/InterviewPage"; // The Interview Room
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster } from "react-hot-toast";
 

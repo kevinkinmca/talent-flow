@@ -4,22 +4,69 @@ import {
   StreamCall, 
   StreamTheme, 
   CallControls, 
-  PaginatedGridLayout, // <--- CHANGED: Imported Grid Layout
-  CallParticipantsList 
+  PaginatedGridLayout, 
+  SpeakerLayout, // <--- 1. Import SpeakerLayout
+  useCallStateHooks // <--- 2. Import this hook
 } from '@stream-io/video-react-sdk';
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
 import { Loader2 } from 'lucide-react';
+import CodeEditor from "../components/CodeEditor"; 
 
-// Make sure this matches your .env VITE_STREAM_API_KEY
-const apiKey = "mptsv46er4qt"; 
+const apiKey = "mptsv46er4qt"; // Make sure this matches your .env
 
+// --- NEW COMPONENT: HANDLES THE UI INSIDE THE CALL ---
+const MeetingRoom = () => {
+  const navigate = useNavigate();
+  const { useHasOngoingScreenShare } = useCallStateHooks(); // Detect screen share
+  const hasOngoingScreenShare = useHasOngoingScreenShare();
+  const { authUser } = useAuth();
+  const { id } = useParams();
+
+  return (
+    <div className="flex-1 flex overflow-hidden">
+      
+      {/* LEFT SIDE: Video & Controls (40% width) */}
+      <div className="w-[40%] flex flex-col border-r border-gray-700 bg-gray-900">
+         
+         {/* Video Area */}
+         <div className="flex-1 p-2 overflow-y-auto custom-scrollbar relative">
+            {/* LOGIC: 
+              If screen share is active -> Use SpeakerLayout (Big Screen + Small Faces)
+              If normal talking -> Use Grid (Side-by-side equal size)
+            */}
+            {hasOngoingScreenShare ? (
+              <SpeakerLayout participantsBarPosition="bottom" />
+            ) : (
+              <PaginatedGridLayout 
+                  groupSize={2} 
+                  participantBarPosition="bottom"
+              />
+            )}
+         </div>
+         
+         {/* Controls Bar */}
+         <div className="p-4 bg-gray-800 flex justify-center gap-4 border-t border-gray-700 shrink-0">
+            <CallControls onLeave={() => navigate(authUser.role === 'interviewer' ? '/admin' : '/')} />
+         </div>
+      </div>
+
+      {/* RIGHT SIDE: Code Editor (60% width) */}
+      <div className="flex-1 bg-[#1e1e1e] flex flex-col">
+        <CodeEditor roomId={id} />
+      </div>
+
+    </div>
+  );
+};
+
+// --- MAIN PAGE COMPONENT ---
 const InterviewPage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
-  const { id } = useParams(); // <--- This grabs the ID from the URL!
+  const { id } = useParams();
   const [client, setClient] = useState(null);
   const [call, setCall] = useState(null);
 
@@ -34,7 +81,6 @@ const InterviewPage = () => {
        return;
     }
 
-    // 1. Initialize Client
     const myClient = new StreamVideoClient({
       apiKey,
       user: {
@@ -47,7 +93,6 @@ const InterviewPage = () => {
 
     setClient(myClient);
 
-    // 2. Join the Specific Call (using the ID from URL)
     const myCall = myClient.call('default', id);
     myCall.join({ create: true });
     setCall(myCall);
@@ -71,16 +116,8 @@ const InterviewPage = () => {
       <StreamVideo client={client}>
         <StreamCall call={call}>
           <StreamTheme>
-            {/* Video Area */}
-            <div className="flex-1 p-4">
-               {/* CHANGED: Uses Grid Layout for side-by-side view */}
-               <PaginatedGridLayout />
-            </div>
-            
-            {/* Controls */}
-            <div className="p-4 bg-gray-800 flex justify-center gap-4 border-t border-gray-700">
-              <CallControls onLeave={() => navigate(authUser.role === 'interviewer' ? '/admin' : '/')} />
-            </div>
+             {/* RENDER THE NEW MEETING ROOM COMPONENT */}
+             <MeetingRoom />
           </StreamTheme>
         </StreamCall>
       </StreamVideo>
