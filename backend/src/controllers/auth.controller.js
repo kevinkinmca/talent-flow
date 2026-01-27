@@ -1,4 +1,4 @@
-import { User } from "../models/user.js";
+import { User } from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { upsertStreamUser, streamClient } from "../lib/stream.js";
@@ -18,6 +18,7 @@ export const signup = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // 3. Create User in MongoDB
+    // Note: 'role' will default to "candidate" unless you manually change it in DB later
     const user = await User.create({
       name,
       email,
@@ -36,6 +37,7 @@ export const signup = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role, // <--- ADDED: Sends role to frontend
       token,
     });
   } catch (error) {
@@ -72,8 +74,9 @@ export const login = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
-      token,        // Used to keep them logged in
-      streamToken,  // Used to connect to video calls
+      role: user.role, // <--- ADDED: Frontend checks this to redirect to /admin
+      token,           // Used to keep them logged in
+      streamToken,     // Used to connect to video calls
     });
   } catch (error) {
     console.error("Login Error:", error);

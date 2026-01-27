@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Mail, Lock, Loader2, LogIn } from "lucide-react";
 
 const LoginPage = () => {
@@ -10,10 +10,24 @@ const LoginPage = () => {
   });
 
   const { login, loading } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login(formData);
+    
+    // 1. Attempt login
+    const success = await login(formData);
+    
+    if (success) {
+      // 2. Check the saved user data to see their role
+      const user = JSON.parse(localStorage.getItem("user-info"));
+      
+      if (user?.role === "interviewer") {
+        navigate("/admin"); // Redirect Admin to Dashboard
+      } else {
+        navigate("/");      // Redirect Candidate to Home
+      }
+    }
   };
 
   return (
