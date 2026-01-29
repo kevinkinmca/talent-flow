@@ -1,7 +1,9 @@
 Project Title: Talent Flow - Real-Time Remote Technical Interview & Assessment Platform
 
 Description:
+
 🚀 Talent Flow:Real-Time Remote Interview & Assessment Platform
+
 Talent Flow is a unified technical interview platform designed to eliminate the fragmentation of remote recruitment. By integrating high-definition video conferencing directly alongside a real-time collaborative code editor, it provides a seamless, "pair programming" environment for interviewers and candidates.
 
 🧐 The Problem
