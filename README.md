@@ -7,9 +7,11 @@ Description:
 Talent Flow is a unified technical interview platform designed to eliminate the fragmentation of remote recruitment. By integrating high-definition video conferencing directly alongside a real-time collaborative code editor, it provides a seamless, "pair programming" environment for interviewers and candidates.
 
 🧐 The Problem
+
 In the current remote recruitment landscape, technical interviews are often inefficient. Recruiters and candidates are forced to juggle disjointed tools—switching between video platforms like Zoom and separate coding sandboxes. This disrupts the flow of conversation and creates a suboptimal assessment experience.
 
 💡 The Solution
+
 Talent Flow solves this by consolidating the entire interview process into a single, cohesive interface.
 
 Unified Experience: No more tab-switching. See the candidate and their code on one screen.
@@ -19,6 +21,7 @@ Real-Time Synchronization: Powered by WebSockets, code changes are broadcast ins
 Face-to-Face Interaction: Integrated HD Video & Audio ensures that non-verbal cues and communication remain central to the technical assessment.
 
 🛠️ Technology Stack
+
 Frontend: React.js (Responsive Split-Screen UI)
 
 Backend: Node.js & Express.js
