@@ -34,11 +34,11 @@ Database: MongoDB (User Profiles & Session Logs)
 
 
     Studnet name: Kevin K Thomas
-    Contact details: kevink.inmca2126@saintgits.org | +916235695512
+    Contact details: kevink.inmca2126@saintgits.org 
 
 
     Guide : Dr. Jijo Varghese
     Role: Asst Professor (Senior)
-    Contact details: jijo.varghese@saintgits.org | +919995455518
+    Contact details: jijo.varghese@saintgits.org 
 
     
