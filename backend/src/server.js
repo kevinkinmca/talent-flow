@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
+import compileRoutes from "./routes/compile.route.js"; 
 import { createServer } from "http";
 import { Server } from "socket.io";
 
@@ -11,33 +12,25 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-// Configure Socket.io with LOCALHOST + NETWORK IP
+// --- 1. SOCKET.IO CONFIGURATION ---
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://192.168.5.35:5173", // <--- Your Network IP (Mobile/Laptop access)
-      "http://192.168.5.35:5174"  // <--- Your Network IP (Backup port)
-    ],
+    origin: "*", // Allows any IP (Home, College, Mobile) to connect to sockets
     methods: ["GET", "POST"],
   },
 });
 
-// Configure Express CORS with LOCALHOST + NETWORK IP
+// --- 2. EXPRESS CORS CONFIGURATION ---
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://192.168.5.35:5173", // <--- Your Network IP
-    "http://192.168.5.35:5174"  // <--- Your Network IP
-  ],
+  origin: true, // Dynamically trusts the requester's IP
   credentials: true
 }));
 
 app.use(express.json({ limit: "10mb" })); 
 
+// --- 3. ROUTES ---
 app.use("/api/auth", authRoutes);
+app.use("/api/compile", compileRoutes); 
 
 // --- SOCKET.IO LOGIC ---
 io.on("connection", (socket) => {
@@ -52,6 +45,11 @@ io.on("connection", (socket) => {
   // 2. User types code -> Send to everyone else in that room
   socket.on("code-change", ({ roomId, code }) => {
     socket.to(roomId).emit("code-update", code);
+  });
+
+  // 3. NEW: Output Sync -> Send the run result to everyone else
+  socket.on("output-change", ({ roomId, output }) => {
+    socket.to(roomId).emit("output-update", output);
   });
 
   socket.on("disconnect", () => {
