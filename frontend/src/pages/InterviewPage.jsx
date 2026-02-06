@@ -3,66 +3,240 @@ import {
   StreamVideoClient, 
   StreamCall, 
   StreamTheme, 
-  CallControls, 
   PaginatedGridLayout, 
-  SpeakerLayout, // <--- 1. Import SpeakerLayout
-  useCallStateHooks // <--- 2. Import this hook
+  SpeakerLayout, 
+  useCallStateHooks, 
+  useCall
 } from '@stream-io/video-react-sdk';
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Send, Mic, MicOff, Video, VideoOff, PhoneOff, Users, MessageSquare, MonitorUp, AlertTriangle, RefreshCw } from 'lucide-react';
 import CodeEditor from "../components/CodeEditor"; 
+import io from "socket.io-client"; 
+import toast from "react-hot-toast";
 
-const apiKey = "mptsv46er4qt"; // Make sure this matches your .env
+const apiKey = "mptsv46er4qt"; 
 
-// --- NEW COMPONENT: HANDLES THE UI INSIDE THE CALL ---
+// --- MEETING ROOM COMPONENT ---
 const MeetingRoom = () => {
   const navigate = useNavigate();
-  const { useHasOngoingScreenShare } = useCallStateHooks(); // Detect screen share
-  const hasOngoingScreenShare = useHasOngoingScreenShare();
+  const call = useCall(); 
+  
+  // Get Hooks
+  const { useMicrophoneState, useCameraState, useParticipantCount, useHasOngoingScreenShare } = useCallStateHooks();
+  
+  const { isEnabled: isMicOn } = useMicrophoneState();
+  const { isEnabled: isCamOn } = useCameraState();
+  const participantCount = useParticipantCount();
+  const hasOngoingScreenShare = useHasOngoingScreenShare(); 
+
   const { authUser } = useAuth();
-  const { id } = useParams();
+  const { id: roomId } = useParams();
+
+  // --- Question & Socket State ---
+  const [questions, setQuestions] = useState([]);
+  const [newQuestion, setNewQuestion] = useState("");
+  const [socket, setSocket] = useState(null);
+  
+  // 1. Setup Socket
+  useEffect(() => {
+    // UPDATE YOUR IP HERE
+    const newSocket = io("http://192.168.5.35:3000"); 
+    setSocket(newSocket);
+    newSocket.emit("join-room", roomId);
+
+    newSocket.on("question-update", (questionData) => {
+      setQuestions((prev) => [...prev, questionData]);
+    });
+
+    // --- NEW: Listen for Meeting End ---
+    newSocket.on("meeting-ended", () => {
+        toast.error("Host has ended the meeting.");
+        navigate("/"); // Force Candidate back to home
+    });
+
+    return () => newSocket.disconnect();
+  }, [roomId, navigate]);
+
+  // Tab Switch Detector
+  useEffect(() => {
+    if (authUser.role === 'interviewer') return; 
+
+    const handleVisibilityChange = () => {
+        if (document.hidden && socket) {
+            toast.error("⚠️ WARNING: Tab Switching is Monitored!");
+            const alertData = {
+                id: Date.now(),
+                text: "⚠️ ALERT: Candidate switched tabs/windows!",
+                sender: "SYSTEM",
+                time: new Date().toLocaleTimeString()
+            };
+            socket.emit("question-change", { roomId, question: alertData });
+        }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [socket, authUser.role]);
+
+  // Handle Add Question
+  const handleAddQuestion = () => {
+    if (!newQuestion.trim()) return;
+    const questionData = {
+      id: Date.now(),
+      text: newQuestion,
+      sender: authUser.name,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    socket.emit("question-change", { roomId, question: questionData });
+    setNewQuestion("");
+  };
+
+  // --- NEW: Handle Leave/End Call ---
+  const handleLeaveCall = async () => {
+    if (authUser.role === 'interviewer') {
+        // If Admin, end for everyone
+        if (socket) socket.emit("end-meeting", roomId);
+        navigate("/admin");
+    } else {
+        // If Candidate, just leave
+        navigate("/");
+    }
+  };
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex flex-col h-full bg-black">
       
-      {/* LEFT SIDE: Video & Controls (40% width) */}
-      <div className="w-[40%] flex flex-col border-r border-gray-700 bg-gray-900">
-         
-         {/* Video Area */}
-         <div className="flex-1 p-2 overflow-y-auto custom-scrollbar relative">
-            {/* LOGIC: 
-              If screen share is active -> Use SpeakerLayout (Big Screen + Small Faces)
-              If normal talking -> Use Grid (Side-by-side equal size)
-            */}
-            {hasOngoingScreenShare ? (
-              <SpeakerLayout participantsBarPosition="bottom" />
-            ) : (
-              <PaginatedGridLayout 
-                  groupSize={2} 
-                  participantBarPosition="bottom"
-              />
+      {/* --- TOP ROW: VIDEO (50% Height) --- */}
+      <div className="h-[50%] bg-gray-900 relative border-b border-gray-700 flex flex-col min-h-0 overflow-hidden">
+          
+          {/* Top Bar Info */}
+          <div className="absolute top-2 left-2 z-10 flex flex-col gap-2 pointer-events-none">
+            <div className="bg-black/60 px-3 py-1 rounded-full text-white text-xs flex items-center gap-2 backdrop-blur-md border border-white/10 w-fit">
+                <Users size={12} /> {participantCount} Active
+            </div>
+            
+            {/* Screen Share Warning */}
+            {authUser.role === 'candidate' && !hasOngoingScreenShare && (
+                <div className="bg-red-600/90 px-3 py-1 rounded-full text-white text-xs flex items-center gap-2 animate-pulse font-bold w-fit">
+                    <AlertTriangle size={12} /> PLEASE SHARE YOUR SCREEN
+                </div>
             )}
-         </div>
-         
-         {/* Controls Bar */}
-         <div className="p-4 bg-gray-800 flex justify-center gap-4 border-t border-gray-700 shrink-0">
-            <CallControls onLeave={() => navigate(authUser.role === 'interviewer' ? '/admin' : '/')} />
-         </div>
+          </div>
+
+          {/* VIDEO GRID LOGIC */}
+          <div className="flex-1 w-full h-full relative overflow-hidden">
+              {hasOngoingScreenShare ? (
+                  <SpeakerLayout participantsBarPosition="right" />
+              ) : (
+                  <PaginatedGridLayout 
+                    groupSize={2} 
+                    participantBarPosition="bottom"
+                    videoPlaceholder={false}
+                  />
+              )}
+          </div>
+
+          {/* Floating Controls */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3 z-20">
+              <button onClick={() => call.microphone.toggle()} className={`p-3 rounded-full text-white transition-all shadow-lg ${isMicOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500'}`}>
+                {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
+              </button>
+              
+              <button onClick={() => call.camera.toggle()} className={`p-3 rounded-full text-white transition-all shadow-lg ${isCamOn ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500'}`}>
+                {isCamOn ? <Video size={20} /> : <VideoOff size={20} />}
+              </button>
+
+              <button 
+                onClick={() => call.screenShare.toggle()} 
+                className={`p-3 rounded-full text-white transition-all shadow-lg ${hasOngoingScreenShare ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-700 hover:bg-gray-600'}`}
+                title="Share Screen"
+              >
+                <MonitorUp size={20} />
+              </button>
+
+              {/* END CALL BUTTON */}
+              <button onClick={handleLeaveCall} className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all shadow-lg">
+                <PhoneOff size={20} />
+              </button>
+          </div>
       </div>
 
-      {/* RIGHT SIDE: Code Editor (60% width) */}
-      <div className="flex-1 bg-[#1e1e1e] flex flex-col">
-        <CodeEditor roomId={id} />
+      {/* --- BOTTOM ROW: WORKSPACE (50% Height) --- */}
+      <div className="h-[50%] flex min-h-0 relative z-30 bg-gray-900">
+          
+          {/* QUESTIONS PANEL (50%) */}
+          <div className="w-1/2 bg-gray-900 border-r border-gray-700 flex flex-col">
+            <div className="p-2 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4">
+                <h2 className="font-bold text-white text-sm flex items-center gap-2">
+                    <MessageSquare size={16} className="text-blue-400" /> Questions & Alerts
+                </h2>
+                <span className="text-[10px] bg-green-900 text-green-200 px-2 py-0.5 rounded-full">Live</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                {questions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-60">
+                        <p className="text-sm">No questions yet.</p>
+                    </div>
+                ) : (
+                    questions.map((q) => (
+                    <div 
+                        key={q.id} 
+                        className={`p-3 rounded-lg border shadow-sm ${
+                            q.sender === "SYSTEM" 
+                            ? "bg-red-900/30 border-red-500/50" 
+                            : "bg-gray-800 border-gray-700"
+                        }`}
+                    >
+                        <div className="flex justify-between items-center mb-1">
+                            <span className={`text-xs font-bold ${q.sender === "SYSTEM" ? "text-red-400" : "text-blue-400"}`}>
+                                {q.sender}
+                            </span>
+                            <span className="text-[10px] text-gray-500">{q.time}</span>
+                        </div>
+                        <p className={`text-sm ${q.sender === "SYSTEM" ? "text-red-200 font-semibold" : "text-white"}`}>
+                            {q.text}
+                        </p>
+                    </div>
+                    ))
+                )}
+            </div>
+
+            {/* Input (Admin Only) */}
+            {authUser.role === "interviewer" && (
+                <div className="p-3 bg-gray-800 border-t border-gray-700 shrink-0">
+                    <div className="flex gap-2">
+                    <input
+                        type="text"
+                        placeholder="Type question..."
+                        className="flex-1 bg-black/30 text-white text-sm px-4 py-2 rounded-lg outline-none border border-gray-600 focus:border-blue-500"
+                        value={newQuestion}
+                        onChange={(e) => setNewQuestion(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddQuestion()}
+                    />
+                    <button onClick={handleAddQuestion} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg">
+                        <Send size={18} />
+                    </button>
+                    </div>
+                </div>
+            )}
+          </div>
+
+          {/* CODE EDITOR (50%) */}
+          <div className="w-1/2 bg-[#1e1e1e] flex flex-col">
+              <CodeEditor roomId={roomId} />
+          </div>
+
       </div>
 
     </div>
   );
 };
 
-// --- MAIN PAGE COMPONENT ---
+// --- MAIN WRAPPER ---
 const InterviewPage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
@@ -75,48 +249,67 @@ const InterviewPage = () => {
       navigate('/login');
       return;
     }
-
     if (!authUser.streamToken) {
-       console.error("No Stream Token found!");
-       return;
+        toast.error("Authentication Error. Please Login again.");
+        navigate('/login');
+        return;
     }
 
-    const myClient = new StreamVideoClient({
-      apiKey,
-      user: {
-        id: authUser._id,
-        name: authUser.name,
-        image: authUser.image || `https://getstream.io/random_png/?name=${authUser.name}`,
-      },
-      token: authUser.streamToken,
-    });
+    let myClient = null;
+    let myCall = null;
 
-    setClient(myClient);
+    const initCall = async () => {
+      try {
+        myClient = new StreamVideoClient({
+            apiKey,
+            user: {
+                id: authUser._id,
+                name: authUser.name,
+                image: authUser.image || `https://getstream.io/random_png/?name=${authUser.name}`,
+            },
+            token: authUser.streamToken,
+        });
+        setClient(myClient);
 
-    const myCall = myClient.call('default', id);
-    myCall.join({ create: true });
-    setCall(myCall);
+        myCall = myClient.call('default', id);
+        await myCall.join({ create: true });
+        setCall(myCall);
+
+      } catch (error) {
+        console.error("Connection Error:", error);
+        toast.error("Failed to connect. Retrying...");
+      }
+    };
+
+    initCall();
 
     return () => {
-      myClient.disconnectUser();
-      setClient(null);
-      setCall(null);
+        if (myCall) {
+            myCall.leave().catch(console.error);
+        }
+        if (myClient) {
+            myClient.disconnectUser().catch(console.error);
+        }
+        setClient(null);
+        setCall(null);
     };
   }, [authUser, id, navigate]);
 
   if (!client || !call) return (
-    <div className="flex h-screen items-center justify-center">
+    <div className="flex h-[calc(100vh-80px)] items-center justify-center bg-gray-900 flex-col gap-4">
       <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
-      <span className="ml-2 text-gray-500">Joining Interview Room...</span>
+      <span className="text-gray-400">Connecting...</span>
+      <button onClick={() => window.location.reload()} className="text-sm text-blue-400 hover:underline flex items-center gap-2">
+        <RefreshCw size={14} /> Stuck? Reload
+      </button>
     </div>
   );
 
   return (
-    <div className="h-[calc(100vh-80px)] bg-gray-900 text-white flex flex-col">
+    <div className="h-[calc(100vh-80px)] bg-black text-white flex flex-col">
       <StreamVideo client={client}>
         <StreamCall call={call}>
           <StreamTheme>
-             {/* RENDER THE NEW MEETING ROOM COMPONENT */}
              <MeetingRoom />
           </StreamTheme>
         </StreamCall>
