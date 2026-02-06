@@ -12,23 +12,18 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-// --- 1. SOCKET.IO CONFIGURATION ---
+// --- SOCKET.IO CONFIGURATION ---
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Allows any IP (Home, College, Mobile) to connect to sockets
+    origin: "*", 
     methods: ["GET", "POST"],
   },
 });
 
-// --- 2. EXPRESS CORS CONFIGURATION ---
-app.use(cors({
-  origin: true, // Dynamically trusts the requester's IP
-  credentials: true
-}));
-
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "10mb" })); 
 
-// --- 3. ROUTES ---
+// --- ROUTES ---
 app.use("/api/auth", authRoutes);
 app.use("/api/compile", compileRoutes); 
 
@@ -36,20 +31,29 @@ app.use("/api/compile", compileRoutes);
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
-  // 1. User joins a specific interview room
   socket.on("join-room", (roomId) => {
     socket.join(roomId);
-    console.log(`User ${socket.id} joined room: ${roomId}`);
   });
 
-  // 2. User types code -> Send to everyone else in that room
+  // Code Sync
   socket.on("code-change", ({ roomId, code }) => {
     socket.to(roomId).emit("code-update", code);
   });
 
-  // 3. NEW: Output Sync -> Send the run result to everyone else
+  // Output Sync
   socket.on("output-change", ({ roomId, output }) => {
     socket.to(roomId).emit("output-update", output);
+  });
+
+  // Question Sync (Admin adds -> Candidate sees)
+  socket.on("question-change", ({ roomId, question }) => {
+    // Broadcast the new question to everyone in the room (including sender)
+    io.in(roomId).emit("question-update", question);
+  });
+
+  // --- NEW: End Meeting (Admin ends -> Candidate forced to leave) ---
+  socket.on("end-meeting", (roomId) => {
+    socket.to(roomId).emit("meeting-ended");
   });
 
   socket.on("disconnect", () => {
