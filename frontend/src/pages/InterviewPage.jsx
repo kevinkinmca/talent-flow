@@ -17,6 +17,7 @@ import CodeEditor from "../components/CodeEditor";
 import io from "socket.io-client"; 
 import toast from "react-hot-toast";
 import * as faceapi from 'face-api.js'; 
+import axios from "axios";
 
 const apiKey = "mptsv46er4qt"; 
 
@@ -42,13 +43,12 @@ const MeetingRoom = () => {
   const localParticipant = useLocalParticipant();
   const videoRef = useRef(null); 
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  // We still keep the state to track logic, even if we don't display the badge
   const [faceWarning, setFaceWarning] = useState(""); 
   const lastWarningTime = useRef(0);
 
   // 1. Setup Socket
   useEffect(() => {
-    // UPDATE YOUR IP HERE
+    // Keep your IP for socket connection
     const newSocket = io("http://192.168.5.35:3000"); 
     setSocket(newSocket);
     newSocket.emit("join-room", roomId);
@@ -56,7 +56,7 @@ const MeetingRoom = () => {
     newSocket.on("question-update", (questionData) => {
       setQuestions((prev) => [...prev, questionData]);
     });
-
+    
     newSocket.on("meeting-ended", () => {
         toast.error("Host has ended the meeting.");
         navigate("/"); 
@@ -103,13 +103,11 @@ const MeetingRoom = () => {
       const now = Date.now();
       let currentIssue = ""; 
 
-      // A. FACE COUNT CHECKS
       if (detections.length === 0) {
         currentIssue = "⚠️ ALERT: Face Not Visible!";
       } else if (detections.length > 1) {
         currentIssue = "⚠️ ALERT: Multiple Faces Detected!";
       } else {
-        // B. HEAD ROTATION CHECK
         const landmarks = detections[0].landmarks;
         const nose = landmarks.getNose()[3];
         const jaw = landmarks.getJawOutline();
@@ -130,7 +128,6 @@ const MeetingRoom = () => {
       if (currentIssue) {
         setFaceWarning(currentIssue);
 
-        // Only send TOAST/SOCKET if 4 seconds have passed
         if (now - lastWarningTime.current > 4000) {
             toast.error(currentIssue);
             lastWarningTime.current = now;
@@ -175,7 +172,6 @@ const MeetingRoom = () => {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [socket, authUser.role]);
 
-  // Add Question
   const handleAddQuestion = () => {
     if (!newQuestion.trim()) return;
     const questionData = {
@@ -188,8 +184,19 @@ const MeetingRoom = () => {
     setNewQuestion("");
   };
 
+  // --- CORRECTED LEAVE CALL LOGIC ---
   const handleLeaveCall = async () => {
     if (authUser.role === 'interviewer') {
+        try {
+            // Updated to use absolute IP address
+            await axios.post("http://192.168.5.35:3000/api/interview/end", {
+                roomId,
+                verdict: "Pending" 
+            });
+        } catch (error) {
+            console.error("Error saving interview end:", error);
+        }
+
         if (socket) socket.emit("end-meeting", roomId);
         navigate("/admin");
     } else {
@@ -199,32 +206,19 @@ const MeetingRoom = () => {
 
   return (
     <div className="flex flex-col h-full bg-black">
+      <video ref={videoRef} autoPlay muted className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none" />
       
-      {/* --- HIDDEN VIDEO FOR AI --- */}
-      <video 
-        ref={videoRef} 
-        autoPlay 
-        muted 
-        className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none" 
-      />
-
       {/* --- TOP ROW --- */}
       <div className="h-[50%] bg-gray-900 relative border-b border-gray-700 flex flex-col min-h-0 overflow-hidden">
-          
           <div className="absolute top-2 left-2 z-10 flex flex-col gap-2 pointer-events-none">
             <div className="bg-black/60 px-3 py-1 rounded-full text-white text-xs flex items-center gap-2 backdrop-blur-md border border-white/10 w-fit">
                 <Users size={12} /> {participantCount} Active
             </div>
-            
             {authUser.role === 'candidate' && !hasOngoingScreenShare && (
                 <div className="bg-red-600/90 px-3 py-1 rounded-full text-white text-xs flex items-center gap-2 animate-pulse font-bold w-fit">
                     <MonitorUp size={12} /> SHARE SCREEN
                 </div>
             )}
-            
-            {/* REMOVED: The Red Badge Logic has been deleted here.
-               The user will still see Toast alerts and Chat Logs, but no persistent red badge.
-            */}
           </div>
 
           <div className="flex-1 w-full h-full relative overflow-hidden">
@@ -301,6 +295,7 @@ const MeetingRoom = () => {
   );
 };
 
+// --- MAIN WRAPPER & INITIALIZATION ---
 const InterviewPage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
@@ -323,9 +318,26 @@ const InterviewPage = () => {
             token: authUser.streamToken,
         });
         setClient(myClient);
+
         myCall = myClient.call('default', id);
         await myCall.join({ create: true });
         setCall(myCall);
+
+        // --- BULLETPROOF SAVE LOGIC ---
+        // Dynamically build the data so we never overwrite the candidate name or send nulls
+        const payload = { roomId: id };
+        
+        if (authUser.role === 'candidate') {
+            payload.candidateId = authUser._id;
+            payload.candidateName = authUser.name; // Only save name if it's the candidate
+        } else if (authUser.role === 'interviewer') {
+            payload.interviewerId = authUser._id;
+        }
+
+        // Updated to use absolute IP address
+        await axios.post("http://192.168.5.35:3000/api/interview/start", payload);
+        // ------------------------------
+
       } catch (error) {
         console.error(error);
         if (error.code === 40 || error.message?.includes('expired')) {
