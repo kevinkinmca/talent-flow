@@ -4,6 +4,7 @@ import cors from "cors";
 import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
 import compileRoutes from "./routes/compile.route.js"; 
+import interviewRoutes from "./routes/interview.route.js"; // <--- 1. Import this
 import { createServer } from "http";
 import { Server } from "socket.io";
 
@@ -26,6 +27,7 @@ app.use(express.json({ limit: "10mb" }));
 // --- ROUTES ---
 app.use("/api/auth", authRoutes);
 app.use("/api/compile", compileRoutes); 
+app.use("/api/interview", interviewRoutes); // <--- 2. Add this line
 
 // --- SOCKET.IO LOGIC ---
 io.on("connection", (socket) => {
@@ -51,7 +53,7 @@ io.on("connection", (socket) => {
     io.in(roomId).emit("question-update", question);
   });
 
-  // --- NEW: End Meeting (Admin ends -> Candidate forced to leave) ---
+  // --- End Meeting (Admin ends -> Candidate forced to leave) ---
   socket.on("end-meeting", (roomId) => {
     socket.to(roomId).emit("meeting-ended");
   });

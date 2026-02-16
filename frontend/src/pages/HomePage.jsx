@@ -1,20 +1,37 @@
-import { useState, useEffect } from "react"; // Added useEffect
+import { useState, useEffect } from "react"; 
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Video, Calendar, Clock, ArrowRight } from "lucide-react";
+import { Calendar, Clock, ArrowRight, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import axios from "axios"; 
 
 const HomePage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
   const [meetingCode, setMeetingCode] = useState("");
+  const [history, setHistory] = useState([]); 
 
-  // --- NEW CODE: Redirect Admin to Dashboard ---
+  // Redirect Admin
   useEffect(() => {
     if (authUser?.role === "interviewer") {
       navigate("/admin");
     }
   }, [authUser, navigate]);
-  // ---------------------------------------------
+
+  // --- Fetch Candidate History ---
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        if (authUser?._id) {
+            // Using absolute IP address to completely bypass Vite proxy issues
+            const res = await axios.get(`http://192.168.5.35:3000/api/interview/history/${authUser._id}`);
+            setHistory(res.data);
+        }
+      } catch (error) {
+        console.error("Failed to load history:", error);
+      }
+    };
+    fetchHistory();
+  }, [authUser]);
 
   const handleJoin = () => {
     if (meetingCode.trim()) {
@@ -55,9 +72,11 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Stats Grid (Same as before) */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        
+        {/* Upcoming Card */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80 flex flex-col">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
               <Calendar className="w-6 h-6" />
@@ -67,12 +86,13 @@ const HomePage = () => {
               <p className="text-sm text-gray-500">Scheduled sessions</p>
             </div>
           </div>
-          <div className="text-center py-6 text-gray-400">
+          <div className="flex-1 flex items-center justify-center text-gray-400">
             <p>No upcoming interviews scheduled</p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        {/* --- HISTORY CARD --- */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80 flex flex-col">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-green-100 text-green-600 rounded-lg">
               <Clock className="w-6 h-6" />
@@ -82,10 +102,45 @@ const HomePage = () => {
               <p className="text-sm text-gray-500">Past recordings</p>
             </div>
           </div>
-          <div className="text-center py-6 text-gray-400">
-            <p>No past interviews found</p>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
+            {history.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                    <p>No past interviews found</p>
+                </div>
+            ) : (
+                history.map((item) => (
+                    <div key={item._id} className="p-4 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition flex justify-between items-center">
+                        <div>
+                            <p className="font-bold text-gray-800 text-sm">Code: {item.roomId}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {new Date(item.startTime).toLocaleDateString()} at {new Date(item.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </p>
+                        </div>
+                        
+                        {/* Status & Verdict Badges */}
+                        <div className="flex flex-col items-end gap-1">
+                            {/* 1. Meeting Status (Live/Completed) */}
+                            <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase tracking-wider ${
+                                item.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                                {item.status}
+                            </span>
+
+                            {/* 2. Verdict / Score (Pass/Fail/Pending) */}
+                            <div className="flex items-center gap-1 mt-1">
+                                <span className="text-[10px] text-gray-400 font-medium uppercase">Result:</span>
+                                {item.verdict === 'Pass' && <span className="flex items-center gap-1 text-[11px] font-bold text-green-600"><CheckCircle size={10}/> Pass</span>}
+                                {item.verdict === 'Fail' && <span className="flex items-center gap-1 text-[11px] font-bold text-red-600"><XCircle size={10}/> Fail</span>}
+                                {item.verdict === 'Pending' && <span className="flex items-center gap-1 text-[11px] font-bold text-yellow-600"><AlertCircle size={10}/> Pending</span>}
+                            </div>
+                        </div>
+                    </div>
+                ))
+            )}
           </div>
         </div>
+
       </div>
     </div>
   );
