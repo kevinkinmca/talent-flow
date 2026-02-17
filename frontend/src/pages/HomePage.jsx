@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react"; 
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, ArrowRight, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Calendar, Clock, ArrowRight, Video, CheckCircle, XCircle, AlertCircle } from "lucide-react"; 
 import axios from "axios"; 
 
 const HomePage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
   const [meetingCode, setMeetingCode] = useState("");
+  
   const [history, setHistory] = useState([]); 
+  const [upcoming, setUpcoming] = useState([]); // <--- State for scheduled interviews
 
   // Redirect Admin
   useEffect(() => {
@@ -17,20 +19,24 @@ const HomePage = () => {
     }
   }, [authUser, navigate]);
 
-  // --- Fetch Candidate History ---
+  // --- Fetch Candidate Dashboard Data ---
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetchData = async () => {
       try {
         if (authUser?._id) {
-            // Using absolute IP address to completely bypass Vite proxy issues
-            const res = await axios.get(`http://192.168.5.35:3000/api/interview/history/${authUser._id}`);
-            setHistory(res.data);
+            // 1. Fetch History (Completed)
+            const historyRes = await axios.get(`http://192.168.5.35:3000/api/interview/history/${authUser._id}`);
+            setHistory(historyRes.data);
+
+            // 2. Fetch Upcoming (Scheduled)
+            const upcomingRes = await axios.get(`http://192.168.5.35:3000/api/interview/upcoming/${authUser._id}`);
+            setUpcoming(upcomingRes.data);
         }
       } catch (error) {
-        console.error("Failed to load history:", error);
+        console.error("Failed to load dashboard data:", error);
       }
     };
-    fetchHistory();
+    fetchData();
   }, [authUser]);
 
   const handleJoin = () => {
@@ -52,7 +58,7 @@ const HomePage = () => {
         
         {/* Join Interview Interface */}
         <div className="bg-white/10 p-4 rounded-xl max-w-md backdrop-blur-sm border border-white/20">
-            <label className="block text-sm font-medium text-blue-100 mb-2">Join Interview Room</label>
+            <label className="block text-sm font-medium text-blue-100 mb-2">Join Instant Room</label>
             <div className="flex gap-2">
                 <input 
                     type="text" 
@@ -75,7 +81,7 @@ const HomePage = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Upcoming Card */}
+        {/* --- UPCOMING CARD --- */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80 flex flex-col">
           <div className="flex items-center gap-4 mb-4">
             <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
@@ -86,8 +92,36 @@ const HomePage = () => {
               <p className="text-sm text-gray-500">Scheduled sessions</p>
             </div>
           </div>
-          <div className="flex-1 flex items-center justify-center text-gray-400">
-            <p>No upcoming interviews scheduled</p>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
+             {upcoming.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                    <p>No upcoming interviews scheduled</p>
+                </div>
+             ) : (
+                upcoming.map((item) => {
+                    const scheduledDate = new Date(item.scheduledDate);
+                    return (
+                        <div key={item._id} className="p-4 bg-purple-50 rounded-lg border border-purple-100 hover:bg-purple-100 transition flex justify-between items-center group">
+                            <div>
+                                <p className="font-bold text-gray-800 text-sm">
+                                    {scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                                </p>
+                                <p className="text-xs text-gray-600 font-medium mt-1 bg-white px-2 py-0.5 rounded border border-purple-100 inline-block">
+                                    <Clock size={10} className="inline mr-1 mb-0.5"/> 
+                                    {scheduledDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => navigate(`/interview/${item.roomId}`)} 
+                                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-purple-700 transition transform group-hover:scale-105"
+                            >
+                                <Video size={16} /> Join
+                            </button>
+                        </div>
+                    )
+                })
+             )}
           </div>
         </div>
 
