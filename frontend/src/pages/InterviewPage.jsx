@@ -12,8 +12,11 @@ import { useAuth } from "../context/AuthContext";
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
-import { Loader2, Send, Mic, MicOff, Video, VideoOff, PhoneOff, Users, MessageSquare, MonitorUp, AlertTriangle, RefreshCw, EyeOff, MoveHorizontal } from 'lucide-react';
+
+import { Loader2, Send, Mic, MicOff, Video, VideoOff, PhoneOff, Users, MessageSquare, MonitorUp, AlertTriangle, RefreshCw, EyeOff, MoveHorizontal, Code, PenTool, BookOpen } from 'lucide-react'; // Added BookOpen icon
 import CodeEditor from "../components/CodeEditor"; 
+import Whiteboard from "../components/Whiteboard"; 
+
 import io from "socket.io-client"; 
 import toast from "react-hot-toast";
 import * as faceapi from 'face-api.js'; 
@@ -39,17 +42,34 @@ const MeetingRoom = () => {
   const [newQuestion, setNewQuestion] = useState("");
   const [socket, setSocket] = useState(null);
   
-  // Face & Head Detection State
+  // --- NEW: State to hold questions from Question Bank ---
+  const [savedQuestions, setSavedQuestions] = useState([]);
+  
+  const [activeTab, setActiveTab] = useState("code"); 
+  
   const localParticipant = useLocalParticipant();
   const videoRef = useRef(null); 
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [faceWarning, setFaceWarning] = useState(""); 
   const lastWarningTime = useRef(0);
 
-  // 1. Setup Socket
+  // --- NEW: Fetch Question Bank questions for the Admin ---
   useEffect(() => {
-    // Keep your IP for socket connection
-    const newSocket = io("http://192.168.5.35:3000"); 
+    const fetchQuestions = async () => {
+      if (authUser?.role === "interviewer") {
+        try {
+          const res = await axios.get(`http://10.10.159.188:3000/api/questions/${authUser._id}`);
+          setSavedQuestions(res.data);
+        } catch (error) {
+          console.error("Error fetching question bank:", error);
+        }
+      }
+    };
+    fetchQuestions();
+  }, [authUser]);
+
+  useEffect(() => {
+    const newSocket = io("http://10.10.159.188:3000"); 
     setSocket(newSocket);
     newSocket.emit("join-room", roomId);
 
@@ -62,10 +82,20 @@ const MeetingRoom = () => {
         navigate("/"); 
     });
 
+    newSocket.on("tab-update", (tab) => {
+        setActiveTab(tab);
+    });
+
     return () => newSocket.disconnect();
   }, [roomId, navigate]);
 
-  // 2. Load Face Models
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (socket) {
+        socket.emit("tab-change", { roomId, tab });
+    }
+  };
+
   useEffect(() => {
     const loadModels = async () => {
       const MODEL_URL = '/models'; 
@@ -75,7 +105,6 @@ const MeetingRoom = () => {
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
         ]);
         setModelsLoaded(true);
-        console.log("Face & Landmark Models Loaded");
       } catch (error) {
         console.error("Error loading models:", error);
       }
@@ -83,7 +112,6 @@ const MeetingRoom = () => {
     loadModels();
   }, []);
 
-  // 3. AI Detection Loop
   useEffect(() => {
     if (!modelsLoaded || authUser.role === 'interviewer') return;
     
@@ -152,8 +180,6 @@ const MeetingRoom = () => {
 
   }, [modelsLoaded, localParticipant, socket, authUser.role]);
 
-
-  // Tab Switch Detector
   useEffect(() => {
     if (authUser.role === 'interviewer') return; 
     const handleVisibilityChange = () => {
@@ -161,7 +187,7 @@ const MeetingRoom = () => {
             toast.error("⚠️ WARNING: Tab Switching is Monitored!");
             const alertData = {
                 id: Date.now(),
-                text: "⚠️ ALERT: Candidate switched tabs!",
+                text: "⚠️ ALERT: Candidate switched browser tabs!",
                 sender: "SYSTEM",
                 time: new Date().toLocaleTimeString()
             };
@@ -184,12 +210,10 @@ const MeetingRoom = () => {
     setNewQuestion("");
   };
 
-  // --- CORRECTED LEAVE CALL LOGIC ---
   const handleLeaveCall = async () => {
     if (authUser.role === 'interviewer') {
         try {
-            // Updated to use absolute IP address
-            await axios.post("http://192.168.5.35:3000/api/interview/end", {
+            await axios.post("http://10.10.159.188:3000/api/interview/end", {
                 roomId,
                 verdict: "Pending" 
             });
@@ -225,7 +249,9 @@ const MeetingRoom = () => {
               {hasOngoingScreenShare ? (
                   <SpeakerLayout participantsBarPosition="right" />
               ) : (
-                  <PaginatedGridLayout groupSize={2} participantBarPosition="bottom" videoPlaceholder={false} />
+                  <div className="w-full h-full">
+                      <PaginatedGridLayout groupSize={2} participantBarPosition="bottom" videoPlaceholder={false} />
+                  </div>
               )}
           </div>
 
@@ -247,6 +273,7 @@ const MeetingRoom = () => {
 
       {/* --- BOTTOM ROW --- */}
       <div className="h-[50%] flex min-h-0 relative z-30 bg-gray-900">
+          
           <div className="w-1/2 bg-gray-900 border-r border-gray-700 flex flex-col">
             <div className="p-2 bg-gray-800 border-b border-gray-700 flex justify-between items-center px-4">
                 <h2 className="font-bold text-white text-sm flex items-center gap-2">
@@ -254,6 +281,7 @@ const MeetingRoom = () => {
                 </h2>
                 <span className="text-[10px] bg-green-900 text-green-200 px-2 py-0.5 rounded-full">Live</span>
             </div>
+            
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                 {questions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-60">
@@ -271,31 +299,83 @@ const MeetingRoom = () => {
                     ))
                 )}
             </div>
+            
             {authUser.role === "interviewer" && (
-                <div className="p-3 bg-gray-800 border-t border-gray-700 shrink-0">
+                <div className="p-3 bg-gray-800 border-t border-gray-700 shrink-0 flex flex-col gap-2">
+                    {/* --- NEW: QUESTION BANK DROPDOWN --- */}
+                    {savedQuestions.length > 0 && (
+                        <div className="relative">
+                            <BookOpen size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
+                            <select 
+                                className="w-full bg-gray-900 text-gray-300 text-xs pl-8 pr-3 py-2 rounded-lg outline-none border border-gray-600 focus:border-blue-500 appearance-none cursor-pointer"
+                                onChange={(e) => {
+                                    if (e.target.value) {
+                                        // Auto-fills the input box so the admin can review before sending
+                                        setNewQuestion(e.target.value);
+                                        e.target.value = ""; // reset dropdown
+                                    }
+                                }}
+                                defaultValue=""
+                            >
+                                <option value="" disabled>Select from Question Bank...</option>
+                                {savedQuestions.map((q) => (
+                                    <option key={q._id} value={q.description}>
+                                        {q.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <div className="flex gap-2">
-                    <input
-                        type="text"
-                        placeholder="Type question..."
-                        className="flex-1 bg-black/30 text-white text-sm px-4 py-2 rounded-lg outline-none border border-gray-600 focus:border-blue-500"
-                        value={newQuestion}
-                        onChange={(e) => setNewQuestion(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddQuestion()}
-                    />
-                    <button onClick={handleAddQuestion} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg"><Send size={18} /></button>
+                        <input
+                            type="text"
+                            placeholder="Type question..."
+                            className="flex-1 bg-black/30 text-white text-sm px-4 py-2 rounded-lg outline-none border border-gray-600 focus:border-blue-500"
+                            value={newQuestion}
+                            onChange={(e) => setNewQuestion(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddQuestion()}
+                        />
+                        <button onClick={handleAddQuestion} className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg">
+                            <Send size={18} />
+                        </button>
                     </div>
                 </div>
             )}
           </div>
-          <div className="w-1/2 bg-[#1e1e1e] flex flex-col">
-              <CodeEditor roomId={roomId} />
+
+          <div className="w-1/2 bg-[#1e1e1e] flex flex-col border-l border-gray-700">
+              <div className="flex bg-gray-900 border-b border-gray-700 shrink-0">
+                  <button 
+                      onClick={() => handleTabChange('code')} 
+                      className={`flex-1 py-3 text-sm font-bold transition flex justify-center items-center gap-2 ${activeTab === 'code' ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-800' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+                  >
+                     <Code size={16}/> Code Editor
+                  </button>
+                  <button 
+                      onClick={() => handleTabChange('whiteboard')} 
+                      className={`flex-1 py-3 text-sm font-bold transition flex justify-center items-center gap-2 ${activeTab === 'whiteboard' ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-800' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
+                  >
+                     <PenTool size={16}/> Whiteboard
+                  </button>
+              </div>
+              
+              <div className="flex-1 min-h-0 relative">
+                  <div className={`absolute inset-0 transition-opacity duration-200 ${activeTab === 'code' ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
+                      <CodeEditor roomId={roomId} />
+                  </div>
+                  <div className={`absolute inset-0 transition-opacity duration-200 ${activeTab === 'whiteboard' ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'}`}>
+                      <Whiteboard socket={socket} roomId={roomId} />
+                  </div>
+              </div>
           </div>
+
       </div>
     </div>
   );
 };
 
-// --- MAIN WRAPPER & INITIALIZATION ---
+// --- MAIN WRAPPER ---
 const InterviewPage = () => {
   const { authUser } = useAuth();
   const navigate = useNavigate();
@@ -323,20 +403,16 @@ const InterviewPage = () => {
         await myCall.join({ create: true });
         setCall(myCall);
 
-        // --- BULLETPROOF SAVE LOGIC ---
-        // Dynamically build the data so we never overwrite the candidate name or send nulls
         const payload = { roomId: id };
         
         if (authUser.role === 'candidate') {
             payload.candidateId = authUser._id;
-            payload.candidateName = authUser.name; // Only save name if it's the candidate
+            payload.candidateName = authUser.name; 
         } else if (authUser.role === 'interviewer') {
             payload.interviewerId = authUser._id;
         }
 
-        // Updated to use absolute IP address
-        await axios.post("http://192.168.5.35:3000/api/interview/start", payload);
-        // ------------------------------
+        await axios.post("http://10.10.159.188:3000/api/interview/start", payload);
 
       } catch (error) {
         console.error(error);
