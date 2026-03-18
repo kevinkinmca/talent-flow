@@ -1,6 +1,6 @@
 import express from "express";
 import { Interview } from "../models/Interview.js";
-import { User } from "../models/User.js"; // <--- NEW: Import User model to find candidate by email
+import { User } from "../models/User.js"; 
 
 const router = express.Router();
 
@@ -32,7 +32,7 @@ router.post("/start", async (req, res) => {
   }
 });
 
-// 2. END Interview (Update status when Admin leaves)
+// 2. END Interview (FIXED: No longer erases previous data)
 router.post("/end", async (req, res) => {
   const { roomId, verdict } = req.body;
   try {
@@ -67,7 +67,7 @@ router.get("/history/:userId", async (req, res) => {
   }
 });
 
-// 4. --- NEW: SCHEDULE INTERVIEW ---
+// 4. SCHEDULE INTERVIEW
 router.post("/schedule", async (req, res) => {
     const { email, scheduledDate, interviewerId } = req.body;
     try {
@@ -99,7 +99,7 @@ router.post("/schedule", async (req, res) => {
     }
 });
 
-// 5. --- NEW: GET UPCOMING INTERVIEWS ---
+// 5. GET UPCOMING INTERVIEWS
 router.get("/upcoming/:userId", async (req, res) => {
     try {
         const { userId } = req.params;
@@ -111,6 +111,111 @@ router.get("/upcoming/:userId", async (req, res) => {
         res.json(upcoming);
     } catch (error) {
         res.status(500).json({ message: "Error fetching upcoming sessions" });
+    }
+});
+
+// 6. CANCEL/DELETE SCHEDULED INTERVIEW
+router.delete("/cancel/:roomId", async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const deletedInterview = await Interview.findOneAndDelete({ roomId });
+        
+        if (!deletedInterview) {
+            return res.status(404).json({ message: "Interview not found" });
+        }
+        
+        res.status(200).json({ message: "Interview cancelled successfully" });
+    } catch (error) {
+        console.error("Error cancelling interview:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+});
+
+// 7. RESCHEDULE INTERVIEW
+router.put("/reschedule/:roomId", async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const { scheduledDate } = req.body;
+
+        // Find the interview by roomId and update only its scheduledDate
+        const updatedInterview = await Interview.findOneAndUpdate(
+            { roomId },
+            { $set: { scheduledDate } },
+            { new: true } // Returns the newly updated document
+        );
+
+        if (!updatedInterview) {
+            return res.status(404).json({ message: "Interview not found" });
+        }
+
+        res.status(200).json(updatedInterview);
+    } catch (error) {
+        console.error("Error rescheduling:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+});
+
+// 8. SAVE INDIVIDUAL ANSWER DURING INTERVIEW
+router.post("/save-answer", async (req, res) => {
+    try {
+        const { roomId, question, code, output } = req.body;
+        
+        const updatedInterview = await Interview.findOneAndUpdate(
+            { roomId },
+            { 
+                $push: { 
+                    savedAnswers: { question, code, output } 
+                } 
+            },
+            { new: true }
+        );
+
+        res.status(200).json(updatedInterview);
+    } catch (error) {
+        console.error("Error saving answer:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+});
+
+// 9. --- FIXED: SAVE AI REVIEW (APPENDS INSTEAD OF OVERWRITING) ---
+router.post("/save-ai-review", async (req, res) => {
+    try {
+        const { roomId, aiReview } = req.body;
+        
+        // Find the current interview document first
+        const interview = await Interview.findOne({ roomId });
+        
+        // If there is already an AI review, add a line break and append the new one!
+        let newReviewText = aiReview;
+        if (interview && interview.aiReview && interview.aiReview.trim() !== "") {
+            newReviewText = interview.aiReview + "\n\n-------------------\n\n" + aiReview;
+        }
+
+        // Save the combined reviews back to the database
+        const updatedInterview = await Interview.findOneAndUpdate(
+            { roomId },
+            { aiReview: newReviewText },
+            { new: true }
+        );
+        res.status(200).json(updatedInterview);
+    } catch (error) {
+        console.error("AI Review Save Error:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+});
+
+// 10. --- NEW: LOG PROCTORING INCIDENT ---
+router.post("/log-proctoring", async (req, res) => {
+    try {
+        const { roomId, logMessage } = req.body;
+        const updatedInterview = await Interview.findOneAndUpdate(
+            { roomId },
+            { $push: { proctoringLogs: logMessage } },
+            { new: true }
+        );
+        res.status(200).json(updatedInterview);
+    } catch (error) {
+        res.status(500).json({ message: "Server Error" });
     }
 });
 

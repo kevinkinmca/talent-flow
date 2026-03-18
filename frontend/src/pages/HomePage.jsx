@@ -25,11 +25,11 @@ const HomePage = () => {
       try {
         if (authUser?._id) {
             // 1. Fetch History (Completed)
-            const historyRes = await axios.get(`http://192.168.5.35:3000/api/interview/history/${authUser._id}`);
+            const historyRes = await axios.get(`http://10.10.159.188:3000/api/interview/history/${authUser._id}`);
             setHistory(historyRes.data);
 
             // 2. Fetch Upcoming (Scheduled)
-            const upcomingRes = await axios.get(`http://192.168.5.35:3000/api/interview/upcoming/${authUser._id}`);
+            const upcomingRes = await axios.get(`http://10.10.159.188:3000/api/interview/upcoming/${authUser._id}`);
             setUpcoming(upcomingRes.data);
         }
       } catch (error) {

@@ -4,7 +4,8 @@ import cors from "cors";
 import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
 import compileRoutes from "./routes/compile.route.js"; 
-import interviewRoutes from "./routes/interview.route.js"; // <--- 1. Import this
+import interviewRoutes from "./routes/interview.route.js"; 
+import questionRoutes from "./routes/question.route.js"; // <--- NEW: Import Question Routes
 import { createServer } from "http";
 import { Server } from "socket.io";
 
@@ -27,7 +28,8 @@ app.use(express.json({ limit: "10mb" }));
 // --- ROUTES ---
 app.use("/api/auth", authRoutes);
 app.use("/api/compile", compileRoutes); 
-app.use("/api/interview", interviewRoutes); // <--- 2. Add this line
+app.use("/api/interview", interviewRoutes); 
+app.use("/api/questions", questionRoutes); // <--- NEW: Register Question API
 
 // --- SOCKET.IO LOGIC ---
 io.on("connection", (socket) => {
@@ -51,6 +53,21 @@ io.on("connection", (socket) => {
   socket.on("question-change", ({ roomId, question }) => {
     // Broadcast the new question to everyone in the room (including sender)
     io.in(roomId).emit("question-update", question);
+  });
+
+  // --- NEW: TAB SYNC (Code vs Whiteboard) ---
+  socket.on("tab-change", ({ roomId, tab }) => {
+    socket.to(roomId).emit("tab-update", tab);
+  });
+
+  // --- NEW: WHITEBOARD SYNC (Drawings) ---
+  socket.on("draw", ({ roomId, drawData }) => {
+    socket.to(roomId).emit("draw-update", drawData);
+  });
+
+  // --- NEW: WHITEBOARD CLEAR ---
+  socket.on("clear-whiteboard", (roomId) => {
+    socket.to(roomId).emit("whiteboard-cleared");
   });
 
   // --- End Meeting (Admin ends -> Candidate forced to leave) ---
